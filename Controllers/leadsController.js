@@ -1,3 +1,5 @@
+import { paginate } from "../Utils/pagination.js";
+
 const leadListData = [
   {
     id: "D600",
@@ -160,10 +162,7 @@ export const getLeads = (req, res) => {
 
   res.json({
     success: true,
-    data: results,
-    total: results.length,
-    page: 1,
-    pageSize: 10,
+    ...paginate(results, req.query),
     message: "Leads fetched successfully",
   });
 };
