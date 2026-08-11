@@ -5,6 +5,9 @@ import userRoutes from "./Routes/userRoutes.js";
 import leadsRoutes from "./Routes/leadsRoutes.js";
 import orgRoutes from "./Routes/orgRoutes.js";
 import contactsRoutes from "./Routes/contactsRoutes.js";
+import inboxRoutes from "./Routes/inboxRoutes.js";
+import assignmentRulesRoutes from "./Routes/assignmentRulesRoutes.js";
+import notificationCentreRoutes from "./Routes/notificationCentreRoutes.js";
 
 const app = express();
 app.use(
@@ -29,6 +32,12 @@ app.use("/leads", leadsRoutes);
 app.use("/organisations", orgRoutes);
 
 app.use("/contacts", contactsRoutes);
+
+app.use("/inbox", inboxRoutes);
+
+app.use("/assignment-rules", assignmentRulesRoutes);
+
+app.use("/notification-center", notificationCentreRoutes);
 
 const PORT = 8080;
 

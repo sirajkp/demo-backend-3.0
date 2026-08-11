@@ -1,7 +1,10 @@
+import { paginate } from "../Utils/pagination.js";
+
 // Stand-in for the signed-in user until the routes read the bearer token.
 // The "My contacts" tab resolves to this owner, so the tab shows real rows
 // instead of an empty list while auth is still being wired up.
-const CURRENT_USER_ID = "u-01";
+const CURRENT_USER = { id: "u-01", name: "Priya Nair" };
+const CURRENT_USER_ID = CURRENT_USER.id;
 
 // Lead -> Prospect -> Customer is the funnel order the "By lifecycle" tab
 // sorts on. Anything unrecognised sorts last.
@@ -334,11 +337,6 @@ const SEARCHABLE_FIELDS = [
   "source",
 ];
 
-function toPositiveInt(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function matchesSearch(contact, term) {
   return SEARCHABLE_FIELDS.some((field) =>
     String(contact[field] ?? "")
@@ -392,21 +390,9 @@ export const getContacts = (req, res) => {
     results = [...results].sort(compareByLifecycle);
   }
 
-  const total = results.length;
-  const pageSize = Math.min(toPositiveInt(req.query.pageSize, 50), 200);
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  // Clamp rather than 404 - a filter can shrink the list under the page the
-  // client is still holding, and an empty page there reads as a broken table.
-  const page = Math.min(toPositiveInt(req.query.page, 1), totalPages);
-
-  const start = (page - 1) * pageSize;
-
   res.json({
     success: true,
-    data: results.slice(start, start + pageSize),
-    total,
-    page,
-    pageSize,
+    ...paginate(results, req.query),
     message: "Contacts fetched successfully",
   });
 };
@@ -433,12 +419,30 @@ export const getContactById = (req, res) => {
   });
 };
 
+const REQUIRED_ON_CREATE = ["firstName", "lastName", "email"];
+
 export const createContact = (req, res) => {
+  const missing = REQUIRED_ON_CREATE.filter(
+    (field) => !String(req.body?.[field] ?? "").trim()
+  );
+
+  if (missing.length > 0) {
+    return res.status(400).json({
+      success: false,
+      data: null,
+      message: `Missing required field(s): ${missing.join(", ")}`,
+    });
+  }
+
   const newContact = {
     id: `C${Date.now()}`,
     lifecycleStage: "Lead",
-    ownerId: CURRENT_USER_ID,
     ...req.body,
+    // Ownership is server-owned - a client can't create a contact for someone
+    // else, and ownerName has to stay in step with ownerId or the list column
+    // renders blank.
+    ownerId: CURRENT_USER.id,
+    ownerName: CURRENT_USER.name,
     createdAt: new Date().toISOString(),
   };
 
@@ -448,6 +452,96 @@ export const createContact = (req, res) => {
     success: true,
     data: newContact,
     message: "Contact created successfully",
+  });
+};
+
+// Bounded so one request can't be used to push the in-memory store over.
+const MAX_IMPORT_ROWS = 500;
+
+/**
+ * POST /contacts/import - creates many contacts in one call.
+ *
+ * Partial success is the normal outcome: valid rows are created and invalid
+ * ones are reported back with their row number, rather than failing the whole
+ * file because of one bad line.
+ */
+export const importContacts = (req, res) => {
+  const incoming = req.body?.contacts;
+
+  if (!Array.isArray(incoming) || incoming.length === 0) {
+    return res.status(400).json({
+      success: false,
+      data: null,
+      message: "Expected a non-empty 'contacts' array",
+    });
+  }
+
+  if (incoming.length > MAX_IMPORT_ROWS) {
+    return res.status(400).json({
+      success: false,
+      data: null,
+      message: `Too many rows - the limit is ${MAX_IMPORT_ROWS} per import`,
+    });
+  }
+
+  const created = [];
+  const errors = [];
+
+  // Seeded with what is already stored so a file can't re-add an existing
+  // contact, then grown as rows are accepted so it also catches duplicates
+  // within the file itself.
+  const seenEmails = new Set(
+    contactListData.map((contact) => String(contact.email).toLowerCase())
+  );
+
+  incoming.forEach((row, index) => {
+    // 1-based, and past the header line the client stripped.
+    const rowNumber = index + 2;
+
+    const missing = REQUIRED_ON_CREATE.filter(
+      (field) => !String(row?.[field] ?? "").trim()
+    );
+
+    if (missing.length > 0) {
+      errors.push({
+        row: rowNumber,
+        message: `Missing ${missing.join(", ")}`,
+      });
+      return;
+    }
+
+    const email = String(row.email).trim();
+
+    if (seenEmails.has(email.toLowerCase())) {
+      errors.push({ row: rowNumber, message: `Duplicate email ${email}` });
+      return;
+    }
+
+    seenEmails.add(email.toLowerCase());
+
+    created.push({
+      id: `C${Date.now()}${index}`,
+      firstName: String(row.firstName).trim(),
+      lastName: String(row.lastName).trim(),
+      email,
+      phone: String(row.phone ?? "").trim(),
+      lifecycleStage: String(row.lifecycleStage ?? "").trim() || "Lead",
+      source: String(row.source ?? "").trim() || "Others",
+      ownerId: CURRENT_USER.id,
+      ownerName: CURRENT_USER.name,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  contactListData.unshift(...created);
+
+  res.status(created.length > 0 ? 201 : 400).json({
+    success: created.length > 0,
+    created: created.length,
+    skipped: errors.length,
+    errors,
+    data: created,
+    message: `${created.length} contact(s) imported, ${errors.length} skipped`,
   });
 };
 
