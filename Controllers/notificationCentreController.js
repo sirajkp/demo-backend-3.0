@@ -6,6 +6,8 @@
 // resolved from the bearer token when one is present and falls back to a demo
 // key otherwise; swapping in a real `req.user.id` later is a one-line change.
 
+import { currentUser } from "../Utils/currentUser.js";
+
 const CHANNELS = [
   { id: "email", label: "Email" },
   { id: "in_app", label: "In-app" },
@@ -63,44 +65,8 @@ const EVENT_CATALOGUE = [
 
 const EVENTS_BY_ID = new Map(EVENT_CATALOGUE.map((event) => [event.id, event]));
 
-const DEMO_USER = "demo-user";
-
 /** Per-user overrides: userKey -> eventId -> { channel: boolean }. */
 const preferencesByUser = new Map();
-
-/**
- * Identifies the caller from the Cognito bearer token.
- *
- * The `sub` claim is read rather than the raw token because the token itself
- * rotates on every refresh - keying on it would make a user's preferences
- * appear to reset an hour after they set them. The payload is decoded, not
- * verified: this app has no auth middleware yet, and adding signature checks
- * here would only put them in one controller out of six.
- */
-function currentUser(req) {
-  const header = req.headers.authorization ?? "";
-  const token = header.replace(/^Bearer\s+/i, "").trim();
-
-  if (!token) {
-    return DEMO_USER;
-  }
-
-  const payload = token.split(".")[1];
-  if (payload) {
-    try {
-      const claims = JSON.parse(
-        Buffer.from(payload, "base64url").toString("utf8")
-      );
-      if (claims.sub) {
-        return claims.sub;
-      }
-    } catch {
-      // Not a JWT (or a malformed one) - fall through to the token itself.
-    }
-  }
-
-  return token;
-}
 
 function overridesFor(userKey) {
   let overrides = preferencesByUser.get(userKey);

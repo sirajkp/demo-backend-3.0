@@ -8,6 +8,7 @@ import contactsRoutes from "./Routes/contactsRoutes.js";
 import inboxRoutes from "./Routes/inboxRoutes.js";
 import assignmentRulesRoutes from "./Routes/assignmentRulesRoutes.js";
 import notificationCentreRoutes from "./Routes/notificationCentreRoutes.js";
+import userPreferencesRoutes from "./Routes/userPreferencesRoutes.js";
 
 const app = express();
 app.use(
@@ -38,6 +39,8 @@ app.use("/inbox", inboxRoutes);
 app.use("/assignment-rules", assignmentRulesRoutes);
 
 app.use("/notification-center", notificationCentreRoutes);
+
+app.use("/user-preferences", userPreferencesRoutes);
 
 const PORT = 8080;
 
