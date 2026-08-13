@@ -10,6 +10,7 @@ import assignmentRulesRoutes from "./Routes/assignmentRulesRoutes.js";
 import notificationCentreRoutes from "./Routes/notificationCentreRoutes.js";
 import userPreferencesRoutes from "./Routes/userPreferencesRoutes.js";
 import objectManagerRoutes from "./Routes/objectManagerRoutes.js";
+import projectPipelineRoutes from "./Routes/projectPipelineRoutes.js";
 
 const app = express();
 app.use(
@@ -43,6 +44,7 @@ app.use("/notification-center", notificationCentreRoutes);
 
 app.use("/user-preferences", userPreferencesRoutes);
 app.use("/object-manager", objectManagerRoutes);
+app.use("/project-pipeline", projectPipelineRoutes);
 
 const PORT = 8080;
 
