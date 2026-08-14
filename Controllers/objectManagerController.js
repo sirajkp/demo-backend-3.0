@@ -54,6 +54,24 @@ const defaultProperties = (idPrefix) => [
   },
 ];
 
+/**
+ * A lookup from one object to another. Anything that walks relations - a
+ * form's mapped field reaching through to the related record, for instance -
+ * reads `relationConfig.targetObjectId` off a property of type "Relation".
+ */
+const relationProperty = (idPrefix, { label, fieldKey, target, targetLabel }) => ({
+  id: `${idPrefix}-${fieldKey}`,
+  label,
+  fieldKey,
+  color: "#D6E4FF",
+  fieldType: "Relation",
+  relationConfig: {
+    targetObjectId: target,
+    targetObjectLabel: targetLabel,
+    cardinality: "Many-To-One",
+  },
+});
+
 // Seeded to mirror the objects the frontend already renders from
 // src/features/settings/data/objectManagerData.tsx, so the API and the
 // current mock UI agree while the frontend is wired over to real calls.
@@ -82,7 +100,10 @@ const objectListData = [
     iconColor: "#EB5757",
     iconBg: "#FDEAEA",
     description: "Inbound and sourced leads prior to project qualification.",
-    properties: defaultProperties("leads"),
+    properties: [
+      ...defaultProperties("leads"),
+      relationProperty("leads", { label: "Contact", fieldKey: "contact__c", target: "contact", targetLabel: "Contact" }),
+    ],
     associations: [],
     layouts: defaultLayouts("leads"),
   },
@@ -96,7 +117,11 @@ const objectListData = [
     iconColor: "#8A8F1C",
     iconBg: "#F3F4DC",
     description: "A qualified deal moving through install stages.",
-    properties: defaultProperties("projects"),
+    properties: [
+      ...defaultProperties("projects"),
+      relationProperty("projects", { label: "Lead", fieldKey: "lead__c", target: "leads", targetLabel: "Leads" }),
+      relationProperty("projects", { label: "Primary contact", fieldKey: "contact__c", target: "contact", targetLabel: "Contact" }),
+    ],
     associations: [],
     layouts: defaultLayouts("projects"),
   },
@@ -230,7 +255,10 @@ const objectListData = [
     iconColor: "#B76E00",
     iconBg: "#FDF1DC",
     description: "Crew scheduling and job assignment across active projects.",
-    properties: defaultProperties("work-order"),
+    properties: [
+      ...defaultProperties("work-order"),
+      relationProperty("work-order", { label: "Project", fieldKey: "project__c", target: "projects", targetLabel: "Projects" }),
+    ],
     associations: [],
     layouts: defaultLayouts("work-order"),
   },
@@ -314,6 +342,46 @@ const matchesValue = (actual, expected) =>
 
 const findObject = (objectId) =>
   objectListData.find((item) => matchesValue(item.id, objectId));
+
+/**
+ * Whether an object exists, for other controllers that reference one by id - a
+ * form attaches to objects, for instance. Exposed as a lookup rather than the
+ * list itself so this file stays the only thing that can mutate it.
+ */
+export const objectExists = (objectId) => Boolean(findObject(objectId));
+
+/** The ids currently on offer, for error messages that name them. */
+export const listObjectIds = () => objectListData.map((item) => item.id);
+
+/**
+ * An object's display name, or null when it is unknown. Callers that store an
+ * object id read the label back through this rather than keeping a copy, so a
+ * rename here is a rename everywhere.
+ */
+export const objectLabelOf = (objectId) => findObject(objectId)?.name ?? null;
+
+/**
+ * One property of one object, by field key. Returns undefined when either is
+ * unknown, so callers get a single check for "is this mappable".
+ */
+export const findObjectProperty = (objectId, fieldKey) => {
+  const object = findObject(objectId);
+  return object?.properties.find((property) =>
+    matchesValue(property.fieldKey, fieldKey),
+  );
+};
+
+/**
+ * The object a relation property points at, or null when the property is not
+ * a relation. Lets a caller walk one hop without knowing how a relation is
+ * stored.
+ */
+export const relationTargetOf = (objectId, fieldKey) => {
+  const property = findObjectProperty(objectId, fieldKey);
+  return property?.fieldType === "Relation"
+    ? (property.relationConfig?.targetObjectId ?? null)
+    : null;
+};
 
 const notFound = (res, message) =>
   res.status(404).json({ success: false, data: null, message });

@@ -10,6 +10,8 @@ import assignmentRulesRoutes from "./Routes/assignmentRulesRoutes.js";
 import notificationCentreRoutes from "./Routes/notificationCentreRoutes.js";
 import userPreferencesRoutes from "./Routes/userPreferencesRoutes.js";
 import objectManagerRoutes from "./Routes/objectManagerRoutes.js";
+import formsRoutes from "./Routes/formsRoutes.js";
+import emailTemplatesRoutes from "./Routes/emailTemplatesRoutes.js";
 
 const app = express();
 app.use(
@@ -43,6 +45,10 @@ app.use("/notification-center", notificationCentreRoutes);
 
 app.use("/user-preferences", userPreferencesRoutes);
 app.use("/object-manager", objectManagerRoutes);
+
+app.use("/forms", formsRoutes);
+
+app.use("/email-templates", emailTemplatesRoutes);
 
 const PORT = 8080;
 
