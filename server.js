@@ -13,6 +13,7 @@ import objectManagerRoutes from "./Routes/objectManagerRoutes.js";
 import formsRoutes from "./Routes/formsRoutes.js";
 import emailTemplatesRoutes from "./Routes/emailTemplatesRoutes.js";
 import projectPipelineRoutes from "./Routes/projectPipelineRoutes.js";
+import pipelinesRoutes from "./Routes/pipelinesRoutes.js";
 
 const app = express();
 app.use(
@@ -51,6 +52,7 @@ app.use("/notification-center", notificationCentreRoutes);
 app.use("/user-preferences", userPreferencesRoutes);
 app.use("/object-manager", objectManagerRoutes);
 app.use("/project-pipeline", projectPipelineRoutes);
+app.use("/pipelines", pipelinesRoutes);
 
 app.use("/forms", formsRoutes);
 
