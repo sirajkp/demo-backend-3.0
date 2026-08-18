@@ -12,6 +12,7 @@ import userPreferencesRoutes from "./Routes/userPreferencesRoutes.js";
 import objectManagerRoutes from "./Routes/objectManagerRoutes.js";
 import formsRoutes from "./Routes/formsRoutes.js";
 import emailTemplatesRoutes from "./Routes/emailTemplatesRoutes.js";
+import projectPipelineRoutes from "./Routes/projectPipelineRoutes.js";
 
 const app = express();
 app.use(
@@ -22,8 +23,12 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     // ngrok-skip-browser-warning is a custom header, so it has to be allowed
     // explicitly or the preflight fails.
-    allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
-  })
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "ngrok-skip-browser-warning",
+    ],
+  }),
 );
 
 app.use(express.json());
@@ -45,6 +50,7 @@ app.use("/notification-center", notificationCentreRoutes);
 
 app.use("/user-preferences", userPreferencesRoutes);
 app.use("/object-manager", objectManagerRoutes);
+app.use("/project-pipeline", projectPipelineRoutes);
 
 app.use("/forms", formsRoutes);
 
