@@ -13,6 +13,15 @@ import {
   createAssociation,
   deleteAssociation,
   getLayouts,
+  createLayout,
+  deleteLayout,
+  setDefaultLayout,
+  getLayoutDetail,
+  updateLayout,
+  publishLayout,
+  createLayoutTab,
+  deleteLayoutTab,
+  saveLayoutTabSections,
 } from "../Controllers/objectManagerController.js";
 
 const router = express.Router();
@@ -33,5 +42,19 @@ router.post("/objects/:objectId/associations", createAssociation);
 router.delete("/objects/:objectId/associations/:associationId", deleteAssociation);
 
 router.get("/objects/:objectId/layouts", getLayouts);
+router.post("/objects/:objectId/layouts", createLayout);
+router.delete("/objects/:objectId/layouts/:layoutId", deleteLayout);
+router.patch("/objects/:objectId/layouts/:layoutId/default", setDefaultLayout);
+
+router.get("/objects/:objectId/layouts/:layoutId", getLayoutDetail);
+router.patch("/objects/:objectId/layouts/:layoutId", updateLayout);
+router.post("/objects/:objectId/layouts/:layoutId/publish", publishLayout);
+
+router.post("/objects/:objectId/layouts/:layoutId/tabs", createLayoutTab);
+router.delete("/objects/:objectId/layouts/:layoutId/tabs/:tabId", deleteLayoutTab);
+router.patch(
+  "/objects/:objectId/layouts/:layoutId/tabs/:tabId/sections",
+  saveLayoutTabSections,
+);
 
 export default router;

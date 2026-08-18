@@ -17,14 +17,30 @@ const toSnakeCase = (value) =>
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/(^_+|_+$)/g, "");
 
+// Every layout gets these three tabs. They're fixed (not deletable) and not
+// section-editable here - their content (activity feed, related records,
+// change history) is built into the record view itself, not laid out by the
+// user. A factory rather than a shared constant so each layout gets its own
+// array/objects instead of aliasing one mutable structure across all of them.
+const systemTabs = () => [
+  { id: "activity", name: "Activity", isSystem: true, sections: [] },
+  { id: "related", name: "Related", isSystem: true, sections: [] },
+  { id: "history", name: "History", isSystem: true, sections: [] },
+];
+
 const defaultLayouts = (idPrefix) => [
   {
     id: `${idPrefix}-layout-default`,
     name: "Default",
-    role: "All roles",
+    // Empty, not "All roles" - this layout's job is purely to be the
+    // fallback when no other layout's assignedRoles match the viewer, so it
+    // doesn't need a role of its own.
+    assignedRoles: [],
     isDefault: true,
     status: "published",
     version: 1,
+    tabs: systemTabs(),
+    history: [],
   },
 ];
 
@@ -178,31 +194,79 @@ const objectListData = [
       {
         id: "financing-application-layout-admin",
         name: "Admin default",
-        role: "Admin",
+        assignedRoles: ["Admin"],
         isDefault: true,
         status: "published",
         version: 3,
+        history: [
+          { version: 3, publishedAt: "2026-06-02T14:05:00.000Z" },
+          { version: 2, publishedAt: "2026-04-11T09:30:00.000Z" },
+          { version: 1, publishedAt: "2026-02-20T11:00:00.000Z" },
+        ],
+        tabs: [
+          ...systemTabs(),
+          {
+            id: "financing-application-layout-admin-tab-details",
+            name: "Details",
+            isSystem: false,
+            sections: [
+              {
+                id: "financing-application-layout-admin-section-1",
+                title: "Application",
+                columns: 2,
+                visible: true,
+                layout: { x: 0, y: 0, w: 6, h: 4 },
+                fields: [
+                  {
+                    id: "financing-application-layout-admin-field-1",
+                    propertyId: "task-id",
+                    fieldKey: "application_id",
+                    label: "Task ID",
+                    width: "Half",
+                    visible: true,
+                    locked: true,
+                  },
+                  {
+                    id: "financing-application-layout-admin-field-2",
+                    propertyId: "status",
+                    fieldKey: "status",
+                    label: "Status",
+                    width: "Half",
+                    visible: true,
+                    locked: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       },
       {
         id: "financing-application-layout-sales-rep",
         name: "Sales rep view",
-        role: "Sales Rep",
+        assignedRoles: ["Sales Rep"],
         status: "published",
         version: 4,
+        history: [],
+        tabs: systemTabs(),
       },
       {
         id: "financing-application-layout-partner",
         name: "Partner view",
-        role: "Partner",
+        assignedRoles: ["Partner"],
         status: "draft",
         version: 1,
+        history: [],
+        tabs: systemTabs(),
       },
       {
         id: "financing-application-layout-installer",
         name: "Installer view",
-        role: "Installer",
+        assignedRoles: ["Installer"],
         status: "draft",
         version: 1,
+        history: [],
+        tabs: systemTabs(),
       },
     ],
   },
@@ -315,6 +379,12 @@ const matchesValue = (actual, expected) =>
 const findObject = (objectId) =>
   objectListData.find((item) => matchesValue(item.id, objectId));
 
+const findLayout = (object, layoutId) =>
+  object.layouts.find((item) => matchesValue(item.id, layoutId));
+
+const findTab = (layout, tabId) =>
+  layout.tabs.find((item) => matchesValue(item.id, tabId));
+
 const notFound = (res, message) =>
   res.status(404).json({ success: false, data: null, message });
 
@@ -326,6 +396,11 @@ const badRequest = (res, message, errors) =>
 // only needed for the one object currently open in the detail panel, which
 // fetches them itself via GET /object-manager/objects/:objectId.
 const toSummary = ({ properties, associations, layouts, ...summary }) => summary;
+
+// Same idea, one level down: the layouts list (and the layouts embedded in an
+// object's detail) only need the row shape - tabs/sections/history are fetched
+// separately, per layout, only when that layout is opened in the editor.
+const toLayoutSummary = ({ tabs, history, ...summary }) => summary;
 
 // ---------------------------------------------------------------------------
 // Objects
@@ -375,7 +450,7 @@ export const getObjectById = (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: object,
+    data: { ...object, layouts: object.layouts.map(toLayoutSummary) },
     message: "Object fetched successfully",
   });
 };
@@ -752,8 +827,10 @@ export const deleteAssociation = (req, res) => {
 };
 
 // ---------------------------------------------------------------------------
-// Record layouts (read-only for now - creation/editing isn't in the UI yet)
+// Record layouts
 // ---------------------------------------------------------------------------
+
+const ROLE_OPTIONS = ["Admin", "Sales Rep", "Dispatcher", "Installer", "Partner"];
 
 export const getLayouts = (req, res) => {
   const object = findObject(req.params.objectId);
@@ -764,8 +841,367 @@ export const getLayouts = (req, res) => {
 
   res.json({
     success: true,
-    data: object.layouts,
+    data: object.layouts.map(toLayoutSummary),
     total: object.layouts.length,
     message: "Layouts fetched successfully",
+  });
+};
+
+const validateAssignedRoles = (value) => {
+  if (!Array.isArray(value)) {
+    return { error: "assignedRoles must be an array" };
+  }
+  const invalid = value.find((role) => !ROLE_OPTIONS.includes(role));
+  if (invalid) {
+    return { error: `assignedRoles must only contain: ${ROLE_OPTIONS.join(", ")}` };
+  }
+  return { value };
+};
+
+export const createLayout = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const name = asTrimmedString(req.body?.name);
+  const role = asTrimmedString(req.body?.role);
+
+  const errors = {};
+  if (!name) errors.name = "Layout name is required";
+  if (!role) {
+    errors.role = "Role is required";
+  } else if (!ROLE_OPTIONS.includes(role)) {
+    errors.role = `Role must be one of: ${ROLE_OPTIONS.join(", ")}`;
+  }
+
+  if (Object.keys(errors).length) {
+    return badRequest(res, "Validation failed", errors);
+  }
+
+  const newLayout = {
+    id: `${object.id}-layout-${Date.now()}`,
+    name,
+    assignedRoles: [role],
+    status: "draft",
+    version: 1,
+    tabs: systemTabs(),
+    history: [],
+  };
+
+  object.layouts.push(newLayout);
+
+  res.status(201).json({
+    success: true,
+    data: toLayoutSummary(newLayout),
+    message: "Layout created successfully",
+  });
+};
+
+export const deleteLayout = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const index = object.layouts.findIndex((item) =>
+    matchesValue(item.id, req.params.layoutId)
+  );
+
+  if (index === -1) {
+    return notFound(res, "Layout not found");
+  }
+
+  object.layouts.splice(index, 1);
+
+  res.status(200).json({
+    success: true,
+    data: null,
+    message: "Layout deleted successfully",
+  });
+};
+
+// PATCH .../layouts/:layoutId/default - a dedicated action rather than a
+// generic layout PATCH, since setting a default is really "move the flag",
+// not a free-form edit: every other layout on the object has to flip off in
+// the same request so exactly one default ever exists.
+export const setDefaultLayout = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  object.layouts.forEach((item) => {
+    item.isDefault = item.id === layout.id;
+  });
+
+  res.status(200).json({
+    success: true,
+    data: object.layouts.map(toLayoutSummary),
+    message: "Default layout updated successfully",
+  });
+};
+
+/**
+ * GET /object-manager/objects/:objectId/layouts/:layoutId
+ *
+ * Full layout detail - tabs, sections and their fields, and publish history.
+ * Fetched only when a specific layout is opened in the editor.
+ */
+export const getLayoutDetail = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  res.status(200).json({
+    success: true,
+    data: layout,
+    message: "Layout fetched successfully",
+  });
+};
+
+export const updateLayout = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  // id/status/version/isDefault/tabs/history are server-owned here - they
+  // have their own endpoints (publish, set-default, tab/section save) and
+  // shouldn't be overwritten wholesale through a name/roles edit.
+  const { id, status, version, isDefault, tabs, history, ...updates } = req.body ?? {};
+
+  if (updates.name !== undefined) {
+    const name = asTrimmedString(updates.name);
+    if (!name) {
+      return badRequest(res, "Layout name cannot be empty", { name: "Layout name cannot be empty" });
+    }
+    updates.name = name;
+  }
+
+  if (updates.assignedRoles !== undefined) {
+    const { error, value } = validateAssignedRoles(updates.assignedRoles);
+    if (error) {
+      return badRequest(res, "Validation failed", { assignedRoles: error });
+    }
+    updates.assignedRoles = value;
+  }
+
+  Object.assign(layout, updates);
+
+  res.status(200).json({
+    success: true,
+    data: toLayoutSummary(layout),
+    message: "Layout updated successfully",
+  });
+};
+
+/**
+ * POST /object-manager/objects/:objectId/layouts/:layoutId/publish
+ *
+ * Bumps the version, marks the layout published, and snapshots the new
+ * version into its history.
+ */
+export const publishLayout = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  layout.version += 1;
+  layout.status = "published";
+  layout.history.unshift({ version: layout.version, publishedAt: new Date().toISOString() });
+
+  res.status(200).json({
+    success: true,
+    data: layout,
+    message: "Layout published successfully",
+  });
+};
+
+export const createLayoutTab = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  const name = asTrimmedString(req.body?.name);
+
+  if (!name) {
+    return badRequest(res, "Tab name is required", { name: "Tab name is required" });
+  }
+
+  const newTab = {
+    id: `${layout.id}-tab-${Date.now()}`,
+    name,
+    isSystem: false,
+    sections: [],
+  };
+
+  layout.tabs.push(newTab);
+
+  res.status(201).json({
+    success: true,
+    data: newTab,
+    message: "Tab created successfully",
+  });
+};
+
+export const deleteLayoutTab = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  const tab = findTab(layout, req.params.tabId);
+
+  if (!tab) {
+    return notFound(res, "Tab not found");
+  }
+
+  if (tab.isSystem) {
+    return res.status(403).json({
+      success: false,
+      data: null,
+      message: "System tabs cannot be deleted",
+    });
+  }
+
+  layout.tabs = layout.tabs.filter((item) => item.id !== tab.id);
+
+  res.status(200).json({
+    success: true,
+    data: null,
+    message: "Tab deleted successfully",
+  });
+};
+
+const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
+// Matches the canvas's grid: 12 columns total, and a section can't be
+// resized narrower than 3 - which is also what caps a row at 4 sections
+// side by side (12 / 3). Checked here too so a direct API call can't bypass
+// the resize constraint the UI enforces.
+const GRID_COLS = 12;
+const MIN_SECTION_COLS = 3;
+
+const validateSections = (sections) => {
+  if (!Array.isArray(sections)) {
+    return "sections must be an array";
+  }
+  for (const section of sections) {
+    if (!isPlainObject(section) || typeof section.id !== "string" || !section.id) {
+      return "Each section needs an id";
+    }
+    if (!isPlainObject(section.layout)) {
+      return `Section "${section.id}" is missing its grid layout`;
+    }
+    const { w } = section.layout;
+    if (typeof w !== "number" || w < MIN_SECTION_COLS || w > GRID_COLS) {
+      return `Section "${section.id}" width must be between ${MIN_SECTION_COLS} and ${GRID_COLS} columns`;
+    }
+    if (!Array.isArray(section.fields)) {
+      return `Section "${section.id}" is missing its fields array`;
+    }
+  }
+  return null;
+};
+
+/**
+ * PATCH /object-manager/objects/:objectId/layouts/:layoutId/tabs/:tabId/sections
+ *
+ * Replaces the whole sections array for one tab in one shot. This is the one
+ * endpoint behind every section/field edit - add/remove/reorder a section,
+ * drag/resize it, rename it, toggle its visibility or column count, and
+ * add/remove/reorder fields inside it, or toggle a field's width/visibility/
+ * lock. The client always holds the full current sections array (that's how
+ * react-grid-layout reports position changes too), so there's no gain from
+ * splitting this into per-field/per-section CRUD - it would just be more
+ * round trips for the same edit.
+ */
+export const saveLayoutTabSections = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  const tab = findTab(layout, req.params.tabId);
+
+  if (!tab) {
+    return notFound(res, "Tab not found");
+  }
+
+  if (tab.isSystem) {
+    return res.status(403).json({
+      success: false,
+      data: null,
+      message: "System tabs don't have editable sections",
+    });
+  }
+
+  const sectionsError = validateSections(req.body?.sections);
+
+  if (sectionsError) {
+    return badRequest(res, sectionsError);
+  }
+
+  tab.sections = req.body.sections;
+
+  res.status(200).json({
+    success: true,
+    data: tab.sections,
+    message: "Sections saved successfully",
   });
 };
