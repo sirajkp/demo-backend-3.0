@@ -1255,12 +1255,22 @@ export const deleteLayoutTab = (req, res) => {
 const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// Matches the canvas's grid: 12 columns total, and a section (or a field
-// within it) can't be resized narrower than 3 - which is also what caps a
-// row at 4 sections side by side (12 / 3). Checked here too so a direct API
-// call can't bypass the resize constraint the UI enforces.
+// Matches the canvas's grid: 12 columns total, and a section can't be
+// resized narrower than 3 - which is also what caps a row at 4 sections
+// side by side (12 / 3). Checked here too so a direct API call can't bypass
+// the resize constraint the UI enforces.
 const GRID_COLS = 12;
 const MIN_GRID_COLS = 3;
+
+// A field's minimum width is 3 of 12 *page* columns, not of the section's
+// own local 12-col grid - a narrower section makes each local column worth
+// more page-width, so it takes a wider local span to stay above that floor.
+// Mirrors minFieldWidthForSection() in the frontend's gridPlacement.ts.
+const minFieldWidthForSection = (sectionWidth) =>
+  Math.min(
+    GRID_COLS,
+    Math.max(MIN_GRID_COLS, Math.ceil((GRID_COLS * MIN_GRID_COLS) / sectionWidth)),
+  );
 
 const validateSections = (sections) => {
   if (!Array.isArray(sections)) {
@@ -1296,8 +1306,9 @@ const validateSections = (sections) => {
         return `Field "${field.id}" is missing its grid layout`;
       }
       const fieldW = field.layout.w;
-      if (typeof fieldW !== "number" || fieldW < MIN_GRID_COLS || fieldW > GRID_COLS) {
-        return `Field "${field.id}" width must be between ${MIN_GRID_COLS} and ${GRID_COLS} columns`;
+      const minFieldW = minFieldWidthForSection(w);
+      if (typeof fieldW !== "number" || fieldW < minFieldW || fieldW > GRID_COLS) {
+        return `Field "${field.id}" width must be between ${minFieldW} and ${GRID_COLS} columns`;
       }
     }
   }
