@@ -256,7 +256,6 @@ const objectListData = [
               {
                 id: "financing-application-layout-admin-section-1",
                 title: "Application",
-                columns: 2,
                 visible: true,
                 layout: { x: 0, y: 0, w: 6, h: 4 },
                 fields: [
@@ -265,7 +264,7 @@ const objectListData = [
                     propertyId: "task-id",
                     fieldKey: "application_id",
                     label: "Task ID",
-                    width: "Half",
+                    layout: { x: 0, y: 0, w: 6, h: 2 },
                     visible: true,
                     locked: true,
                   },
@@ -274,7 +273,7 @@ const objectListData = [
                     propertyId: "status",
                     fieldKey: "status",
                     label: "Status",
-                    width: "Half",
+                    layout: { x: 6, y: 0, w: 6, h: 2 },
                     visible: true,
                     locked: false,
                   },
@@ -1261,7 +1260,17 @@ const isPlainObject = (value) =>
 // side by side (12 / 3). Checked here too so a direct API call can't bypass
 // the resize constraint the UI enforces.
 const GRID_COLS = 12;
-const MIN_SECTION_COLS = 3;
+const MIN_GRID_COLS = 3;
+
+// A field's minimum width is 3 of 12 *page* columns, not of the section's
+// own local 12-col grid - a narrower section makes each local column worth
+// more page-width, so it takes a wider local span to stay above that floor.
+// Mirrors minFieldWidthForSection() in the frontend's gridPlacement.ts.
+const minFieldWidthForSection = (sectionWidth) =>
+  Math.min(
+    GRID_COLS,
+    Math.max(MIN_GRID_COLS, Math.ceil((GRID_COLS * MIN_GRID_COLS) / sectionWidth)),
+  );
 
 const validateSections = (sections) => {
   if (!Array.isArray(sections)) {
@@ -1279,11 +1288,28 @@ const validateSections = (sections) => {
       return `Section "${section.id}" is missing its grid layout`;
     }
     const { w } = section.layout;
-    if (typeof w !== "number" || w < MIN_SECTION_COLS || w > GRID_COLS) {
-      return `Section "${section.id}" width must be between ${MIN_SECTION_COLS} and ${GRID_COLS} columns`;
+    if (typeof w !== "number" || w < MIN_GRID_COLS || w > GRID_COLS) {
+      return `Section "${section.id}" width must be between ${MIN_GRID_COLS} and ${GRID_COLS} columns`;
     }
     if (!Array.isArray(section.fields)) {
       return `Section "${section.id}" is missing its fields array`;
+    }
+    for (const field of section.fields) {
+      if (
+        !isPlainObject(field) ||
+        typeof field.id !== "string" ||
+        !field.id
+      ) {
+        return `Section "${section.id}" has a field missing its id`;
+      }
+      if (!isPlainObject(field.layout)) {
+        return `Field "${field.id}" is missing its grid layout`;
+      }
+      const fieldW = field.layout.w;
+      const minFieldW = minFieldWidthForSection(w);
+      if (typeof fieldW !== "number" || fieldW < minFieldW || fieldW > GRID_COLS) {
+        return `Field "${field.id}" width must be between ${minFieldW} and ${GRID_COLS} columns`;
+      }
     }
   }
   return null;
