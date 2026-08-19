@@ -3,7 +3,7 @@
 // pattern as the other controllers in this codebase.
 
 const VALID_CATEGORIES = ["open", "won", "lost"];
-const VALID_GATE_TYPES = ["manual", "automatic", "approval"];
+const VALID_GATE_TYPES = ["noGate", "requiredFields", "requiredDocument"];
 
 // The palette the stage drawer offers. Not enforced as a whitelist - a colour
 // is presentation, and pinning the API to one client's swatches would age
@@ -41,6 +41,15 @@ function makeStage(input) {
       ? {}
       : { slaDays: Number(input.slaDays) }),
     gateType: input.gateType,
+    // Only the chosen gate keeps its answer. Storing the other one would leave
+    // a requirement nothing ever checks, and it would come back on the next
+    // read as though it were live.
+    ...(input.gateType === "requiredFields"
+      ? { requiredFields: [...input.requiredFields] }
+      : {}),
+    ...(input.gateType === "requiredDocument"
+      ? { requiredDocumentType: String(input.requiredDocumentType).trim() }
+      : {}),
     statuses: (input.statuses ?? []).map((status) => ({
       id: nextStatusId(),
       name: status.name,
@@ -60,35 +69,38 @@ const pipelines = [
         category: "open",
         color: "#CAC4CE",
         slaDays: 4,
-        gateType: "manual",
+        gateType: "noGate",
       }),
       makeStage({
         name: "Design Stage",
         category: "won",
         color: "#B6BE9C",
         slaDays: 32,
-        gateType: "manual",
+        gateType: "noGate",
       }),
       makeStage({
         name: "Development Stage",
         category: "lost",
         color: "#CAC4CE",
         slaDays: 32,
-        gateType: "approval",
+        // Field keys on the Projects object - see GATE_PROPERTY_OBJECT_ID.
+        gateType: "requiredFields",
+        requiredFields: ["name", "status"],
       }),
       makeStage({
         name: "Quality Check",
         category: "lost",
         color: "#2F80ED",
         slaDays: 32,
-        gateType: "approval",
+        gateType: "requiredDocument",
+        requiredDocumentType: "Inspection report",
       }),
       makeStage({
         name: "Budget Planning",
         category: "won",
         color: "#B6BE9C",
         slaDays: 32,
-        gateType: "automatic",
+        gateType: "noGate",
       }),
     ],
   },
@@ -146,6 +158,25 @@ function validateStage(body) {
     if (!Number.isInteger(days) || days < 1) {
       return "slaDays must be a whole number of days, 1 or more";
     }
+  }
+  // Each gate carries its own requirement, and a gate with nothing to check
+  // would let every record through - which is what noGate is for.
+  if (body.gateType === "requiredFields") {
+    if (!Array.isArray(body.requiredFields) || body.requiredFields.length === 0) {
+      return "requiredFields must list at least one field for a requiredFields gate";
+    }
+    if (body.requiredFields.some((field) => !String(field ?? "").trim())) {
+      return "requiredFields must contain field keys, not blanks";
+    }
+    if (new Set(body.requiredFields).size !== body.requiredFields.length) {
+      return "requiredFields must not repeat a field";
+    }
+  }
+  if (
+    body.gateType === "requiredDocument" &&
+    !String(body.requiredDocumentType ?? "").trim()
+  ) {
+    return "requiredDocumentType is required for a requiredDocument gate";
   }
   return null;
 }
