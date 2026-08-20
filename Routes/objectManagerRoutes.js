@@ -17,6 +17,7 @@ import {
   deleteLayout,
   setDefaultLayout,
   getLayoutDetail,
+  getPublishedLayout,
   updateLayout,
   publishLayout,
   createLayoutTab,
@@ -46,6 +47,9 @@ router.post("/objects/:objectId/layouts", createLayout);
 router.delete("/objects/:objectId/layouts/:layoutId", deleteLayout);
 router.patch("/objects/:objectId/layouts/:layoutId/default", setDefaultLayout);
 
+// Registered before the ":layoutId" route below so "published" is matched
+// as this literal path, not captured as a layout id.
+router.get("/objects/:objectId/layouts/published", getPublishedLayout);
 router.get("/objects/:objectId/layouts/:layoutId", getLayoutDetail);
 router.patch("/objects/:objectId/layouts/:layoutId", updateLayout);
 router.post("/objects/:objectId/layouts/:layoutId/publish", publishLayout);
