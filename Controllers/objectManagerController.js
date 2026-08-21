@@ -44,6 +44,8 @@ const defaultLayouts = (idPrefix) => [
   },
 ];
 
+// isCustom: false on all three - every object gets this baseline set for
+// free, so none of them counts as something an admin added on top of it.
 const defaultProperties = (idPrefix) => [
   {
     id: `${idPrefix}-id`,
@@ -52,6 +54,7 @@ const defaultProperties = (idPrefix) => [
     color: "#CAC4CE",
     badge: "primary",
     fieldType: "Text",
+    isCustom: false,
   },
   {
     id: `${idPrefix}-name`,
@@ -60,6 +63,7 @@ const defaultProperties = (idPrefix) => [
     color: "#CAC4CE",
     badge: "required",
     fieldType: "Text",
+    isCustom: false,
   },
   {
     id: `${idPrefix}-status`,
@@ -67,6 +71,7 @@ const defaultProperties = (idPrefix) => [
     fieldKey: "status",
     color: "#EDDFEF",
     fieldType: "Status",
+    isCustom: false,
   },
 ];
 
@@ -74,6 +79,9 @@ const defaultProperties = (idPrefix) => [
  * A lookup from one object to another. Anything that walks relations - a
  * form's mapped field reaching through to the related record, for instance -
  * reads `relationConfig.targetObjectId` off a property of type "Relation".
+ * Always isCustom: true - a relation is always added on top of an object's
+ * baseline properties, never part of it, hence the "__c" (custom) suffix
+ * convention on its fieldKey.
  */
 const relationProperty = (
   idPrefix,
@@ -84,6 +92,7 @@ const relationProperty = (
   fieldKey,
   color: "#D6E4FF",
   fieldType: "Relation",
+  isCustom: true,
   relationConfig: {
     targetObjectId: target,
     targetObjectLabel: targetLabel,
@@ -170,6 +179,9 @@ const objectListData = [
     iconBg: "#E3F5EA",
     description:
       "A lender application. One project can carry several - apply to multiple lenders, fund one.",
+    // This object's own baseline schema (not built via defaultProperties())
+    // - isCustom: false for the same reason: nothing here was added on top
+    // of what the object already comes with.
     properties: [
       {
         id: "task-id",
@@ -178,6 +190,7 @@ const objectListData = [
         color: "#CAC4CE",
         badge: "primary",
         fieldType: "Text",
+        isCustom: false,
       },
       {
         id: "name",
@@ -186,6 +199,7 @@ const objectListData = [
         color: "#72A276",
         badge: "required",
         fieldType: "Number",
+        isCustom: false,
       },
       {
         id: "timestamp",
@@ -193,6 +207,7 @@ const objectListData = [
         fieldKey: "timestamp",
         color: "#B6BE9C",
         fieldType: "Select",
+        isCustom: false,
       },
       {
         id: "status",
@@ -200,6 +215,7 @@ const objectListData = [
         fieldKey: "status",
         color: "#EDDFEF",
         fieldType: "Status",
+        isCustom: false,
       },
       {
         id: "priority-level",
@@ -208,6 +224,7 @@ const objectListData = [
         color: "#72A276",
         badge: "required",
         fieldType: "Number",
+        isCustom: false,
       },
     ],
     associations: [
@@ -735,6 +752,9 @@ export const createProperty = (req, res) => {
     label,
     fieldKey,
     fieldType,
+    // Anything added here, through Object Manager, is by definition on top
+    // of whatever baseline properties the object started with.
+    isCustom: true,
     color: asTrimmedString(req.body?.color) || "#CAC4CE",
     badge: req.body?.required ? "required" : undefined,
     description: asTrimmedString(req.body?.description) || undefined,
@@ -1097,6 +1117,38 @@ export const getLayoutDetail = (req, res) => {
     success: true,
     data: layout,
     message: "Layout fetched successfully",
+  });
+};
+
+/**
+ * GET /object-manager/objects/:objectId/layouts/published
+ *
+ * The layout that governs this object's record detail page: the published
+ * layout marked as default. Falls back to the first published layout if
+ * somehow none is marked default, and 404s if the object has no published
+ * layout at all yet. There's no real auth/roles here, so this doesn't (yet)
+ * pick a layout per-viewer-role the way assignedRoles implies it eventually
+ * should - it's the same "default" concept the Object Manager UI already
+ * exposes via "Set as default".
+ */
+export const getPublishedLayout = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const published = object.layouts.filter((item) => item.status === "published");
+  const layout = published.find((item) => item.isDefault) ?? published[0] ?? null;
+
+  if (!layout) {
+    return notFound(res, "This object has no published layout yet");
+  }
+
+  res.status(200).json({
+    success: true,
+    data: layout,
+    message: "Published layout fetched successfully",
   });
 };
 
