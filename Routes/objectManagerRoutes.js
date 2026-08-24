@@ -23,6 +23,8 @@ import {
   createLayoutTab,
   deleteLayoutTab,
   saveLayoutTabSections,
+  getLayoutPreference,
+  saveLayoutPreference,
 } from "../Controllers/objectManagerController.js";
 
 const router = express.Router();
@@ -60,5 +62,8 @@ router.patch(
   "/objects/:objectId/layouts/:layoutId/tabs/:tabId/sections",
   saveLayoutTabSections,
 );
+
+router.get("/objects/:objectId/layout-preferences/:userId", getLayoutPreference);
+router.patch("/objects/:objectId/layout-preferences/:userId", saveLayoutPreference);
 
 export default router;

@@ -1420,3 +1420,95 @@ export const saveLayoutTabSections = (req, res) => {
     message: "Sections saved successfully",
   });
 };
+
+// ---------------------------------------------------------------------------
+// Record layout preferences
+// ---------------------------------------------------------------------------
+
+// A viewer's own drag/resize of a published layout's sections on their
+// record detail page - separate from the org's shared layout (saved via
+// saveLayoutTabSections above). One entry per (objectId, userId), holding
+// only position overrides per tab/section - never field content, tab
+// structure, or anything else a personal rearrangement doesn't touch.
+const layoutPreferences = [];
+
+const findLayoutPreference = (objectId, userId) =>
+  layoutPreferences.find(
+    (item) => item.objectId === objectId && item.userId === userId,
+  );
+
+/**
+ * GET /object-manager/objects/:objectId/layout-preferences/:userId
+ *
+ * 404s (not an empty object) when this user has never rearranged this
+ * object's sections, so the client can tell "nothing to override" apart
+ * from "an override that happens to be empty" and fall back to the org's
+ * published layout.
+ */
+export const getLayoutPreference = (req, res) => {
+  const { objectId, userId } = req.params;
+  const preference = findLayoutPreference(objectId, userId);
+
+  if (!preference) {
+    return notFound(res, "No layout preference for this user");
+  }
+
+  res.status(200).json({
+    success: true,
+    data: preference,
+    message: "Layout preference fetched successfully",
+  });
+};
+
+/**
+ * PATCH /object-manager/objects/:objectId/layout-preferences/:userId
+ *
+ * Upserts this user's section positions for one tab. Body: { tabId,
+ * sections: [{ id, layout }] } - id+layout is all a drag/resize on the
+ * detail page actually produces, so that's all this stores or validates
+ * (no title/fields/visible - those still come from the org layout).
+ */
+export const saveLayoutPreference = (req, res) => {
+  const { objectId, userId } = req.params;
+  const tabId = asTrimmedString(req.body?.tabId);
+  const sections = req.body?.sections;
+
+  if (!tabId) {
+    return badRequest(res, "tabId is required", { tabId: "tabId is required" });
+  }
+  if (!Array.isArray(sections)) {
+    return badRequest(res, "sections must be an array", {
+      sections: "sections must be an array",
+    });
+  }
+  for (const section of sections) {
+    if (
+      !isPlainObject(section) ||
+      typeof section.id !== "string" ||
+      !section.id ||
+      !isPlainObject(section.layout)
+    ) {
+      return badRequest(res, "Each section needs an id and a layout", {
+        sections: "Each section needs an id and a layout",
+      });
+    }
+  }
+
+  let preference = findLayoutPreference(objectId, userId);
+  if (!preference) {
+    preference = { userId, objectId, sectionLayouts: {} };
+    layoutPreferences.push(preference);
+  }
+
+  const tabSectionLayouts = {};
+  for (const section of sections) {
+    tabSectionLayouts[section.id] = section.layout;
+  }
+  preference.sectionLayouts[tabId] = tabSectionLayouts;
+
+  res.status(200).json({
+    success: true,
+    data: preference,
+    message: "Layout preference saved successfully",
+  });
+};
