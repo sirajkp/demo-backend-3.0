@@ -22,6 +22,7 @@ import {
   publishLayout,
   createLayoutTab,
   deleteLayoutTab,
+  reorderLayoutTabs,
   saveLayoutTabSections,
   getLayoutPreference,
   saveLayoutPreference,
@@ -58,6 +59,7 @@ router.post("/objects/:objectId/layouts/:layoutId/publish", publishLayout);
 
 router.post("/objects/:objectId/layouts/:layoutId/tabs", createLayoutTab);
 router.delete("/objects/:objectId/layouts/:layoutId/tabs/:tabId", deleteLayoutTab);
+router.patch("/objects/:objectId/layouts/:layoutId/tabs/reorder", reorderLayoutTabs);
 router.patch(
   "/objects/:objectId/layouts/:layoutId/tabs/:tabId/sections",
   saveLayoutTabSections,
