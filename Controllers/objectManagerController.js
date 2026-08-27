@@ -1304,6 +1304,58 @@ export const deleteLayoutTab = (req, res) => {
   });
 };
 
+/**
+ * PATCH /object-manager/objects/:objectId/layouts/:layoutId/tabs/reorder
+ *
+ * Reorders this layout's tabs - system tabs (Activity/Related/History)
+ * included, so any tab can be dragged anywhere. Body: { tabIds: string[] }
+ * - must be exactly this layout's current tab ids (system and custom
+ * together), just reordered; anything else (a missing id, an unknown one,
+ * a duplicate) is rejected rather than silently dropping/duplicating tabs.
+ */
+export const reorderLayoutTabs = (req, res) => {
+  const object = findObject(req.params.objectId);
+
+  if (!object) {
+    return notFound(res, "Object not found");
+  }
+
+  const layout = findLayout(object, req.params.layoutId);
+
+  if (!layout) {
+    return notFound(res, "Layout not found");
+  }
+
+  const tabIds = req.body?.tabIds;
+
+  if (!Array.isArray(tabIds)) {
+    return badRequest(res, "tabIds must be an array", {
+      tabIds: "tabIds must be an array",
+    });
+  }
+
+  const tabsById = new Map(layout.tabs.map((tab) => [tab.id, tab]));
+
+  const isExactMatch =
+    tabIds.length === tabsById.size &&
+    tabIds.every((id) => tabsById.has(id)) &&
+    new Set(tabIds).size === tabIds.length;
+
+  if (!isExactMatch) {
+    return badRequest(res, "tabIds must match this layout's tabs exactly", {
+      tabIds: "tabIds must match this layout's tabs exactly",
+    });
+  }
+
+  layout.tabs = tabIds.map((id) => tabsById.get(id));
+
+  res.status(200).json({
+    success: true,
+    data: layout.tabs,
+    message: "Tabs reordered successfully",
+  });
+};
+
 const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
