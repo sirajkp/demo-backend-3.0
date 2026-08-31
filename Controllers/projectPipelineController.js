@@ -181,6 +181,26 @@ export const getProjectStats = (req, res) => {
 };
 
 /**
+ * GET /project-pipeline/records/:id
+ *
+ * A single project record - the detail page a kanban card or list row
+ * routes to when clicked.
+ */
+export const getProjectRecordById = (req, res) => {
+  const record = findRecord(req.params.id);
+
+  if (!record) {
+    return res.status(404).json({ success: false, data: null, message: "Project not found" });
+  }
+
+  res.json({
+    success: true,
+    data: record,
+    message: "Project record fetched successfully",
+  });
+};
+
+/**
  * PATCH /project-pipeline/records/:id/stage
  *
  * Persists a kanban drag-and-drop move to a different column.
