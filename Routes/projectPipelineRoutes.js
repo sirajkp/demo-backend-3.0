@@ -1,6 +1,7 @@
 import express from "express";
 import {
   getProjectFilters,
+  getProjectRecordById,
   getProjectRecords,
   getProjectStages,
   getProjectStats,
@@ -10,6 +11,7 @@ import {
 const router = express.Router();
 
 router.get("/records", getProjectRecords);
+router.get("/records/:id", getProjectRecordById);
 router.patch("/records/:id/stage", updateProjectStage);
 
 router.get("/stages", getProjectStages);
