@@ -35,6 +35,7 @@ const forms = [
   {
     id: makeId(),
     name: "Automation Form",
+    description: "Fires the onboarding automation when a project is created.",
     status: "draft",
     schema: { elements: [] },
     attachObjectKeys: ["projects"],
@@ -42,6 +43,7 @@ const forms = [
   {
     id: makeId(),
     name: "Contact Form",
+    description: "Captures homeowner details from the public site.",
     status: "draft",
     schema: { elements: [] },
     attachObjectKeys: ["contact"],
@@ -49,6 +51,7 @@ const forms = [
   {
     id: makeId(),
     name: "Stage gate blocked",
+    description: "Filled in by the crew when a stage gate cannot be cleared.",
     status: "published",
     schema: {
       elements: [
@@ -89,6 +92,7 @@ function toSummary(form) {
   return {
     id: form.id,
     name: form.name,
+    description: form.description ?? "",
     status: form.status,
     elementCount: form.schema.elements.length,
     attachObjectKeys: form.attachObjectKeys,
@@ -247,14 +251,20 @@ export const getFormById = (req, res) => {
 /**
  * POST /forms
  *
- * Body: { name, schema?, attachObjectKeys? }. The drawer only asks for a name,
- * so the other two default to empty and are filled in by the builder.
+ * Body: { name, description?, schema?, attachObjectKeys? }. The drawer asks
+ * for a name and an optional description; the other two default to empty and
+ * are filled in by the builder.
  */
 export const createForm = (req, res) => {
-  const { name, schema, attachObjectKeys } = req.body ?? {};
+  const { name, description, schema, attachObjectKeys } = req.body ?? {};
 
   if (typeof name !== "string" || !name.trim()) {
     return badRequest(res, "name is required");
+  }
+
+  // Optional, but it has to be text if it is sent at all.
+  if (description !== undefined && typeof description !== "string") {
+    return badRequest(res, "description must be a string");
   }
 
   // Attachments first: the schema is judged against them.
@@ -273,6 +283,9 @@ export const createForm = (req, res) => {
   const form = {
     id: makeId(),
     name: name.trim(),
+    // Stored as "" rather than left off, so every form has the field and
+    // readers never have to tell "absent" from "empty".
+    description: (description ?? "").trim(),
     status: "draft",
     schema: nextSchema,
     attachObjectKeys: keys,
@@ -287,7 +300,7 @@ export const createForm = (req, res) => {
 /**
  * PATCH /forms/:formId
  *
- * Body: any of { name, schema, attachObjectKeys, status }. The builder saves
+ * Body: any of { name, description, schema, attachObjectKeys, status }. The builder saves
  * the whole schema at once - it is one document, and a partial element update
  * would need an addressing scheme the page has no use for.
  */
@@ -297,13 +310,21 @@ export const updateForm = (req, res) => {
     return notFound(res);
   }
 
-  const { name, schema, attachObjectKeys, status } = req.body ?? {};
+  const { name, description, schema, attachObjectKeys, status } = req.body ?? {};
 
   if (name !== undefined) {
     if (typeof name !== "string" || !name.trim()) {
       return badRequest(res, "name must be a non-empty string");
     }
     form.name = name.trim();
+  }
+
+  // Unlike the name, this one may be cleared back to empty.
+  if (description !== undefined) {
+    if (typeof description !== "string") {
+      return badRequest(res, "description must be a string");
+    }
+    form.description = description.trim();
   }
 
   // The builder sends both together, but either can arrive alone - so the
@@ -359,6 +380,25 @@ export const publishForm = (req, res) => {
   }
   form.status = "published";
   ok(res, form, "Form published successfully");
+};
+
+/**
+ * POST /forms/:formId/unpublish
+ *
+ * The other half of publish: takes a live form back to draft so it drops off
+ * the record pages it is attached to and stops collecting answers. Nothing
+ * about the form itself changes, so it can go live again unedited.
+ *
+ * Idempotent, like publish - a form that is already a draft is the state the
+ * caller asked for, not an error.
+ */
+export const unpublishForm = (req, res) => {
+  const form = findForm(req.params.formId);
+  if (!form) {
+    return notFound(res);
+  }
+  form.status = "draft";
+  ok(res, form, "Form unpublished successfully");
 };
 
 /** DELETE /forms/:formId */

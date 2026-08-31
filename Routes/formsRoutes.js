@@ -5,6 +5,7 @@ import {
   createForm,
   updateForm,
   publishForm,
+  unpublishForm,
   deleteForm,
 } from "../Controllers/formsController.js";
 
@@ -19,6 +20,8 @@ router.get("/:formId", getFormById);
 router.patch("/:formId", updateForm);
 
 router.post("/:formId/publish", publishForm);
+
+router.post("/:formId/unpublish", unpublishForm);
 
 router.delete("/:formId", deleteForm);
 

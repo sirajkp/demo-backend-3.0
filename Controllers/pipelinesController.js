@@ -63,6 +63,9 @@ const pipelines = [
   {
     id: nextPipelineId(),
     name: "Solar workflow",
+    // Exactly one pipeline carries this at a time - see setDefaultPipeline for
+    // how the flag moves, and deletePipeline for how it is never orphaned.
+    isDefault: true,
     stages: [
       makeStage({
         name: "Newly Launched",
@@ -104,10 +107,15 @@ const pipelines = [
       }),
     ],
   },
-  { id: nextPipelineId(), name: "User Registration", stages: [] },
-  { id: nextPipelineId(), name: "Password Reset", stages: [] },
-  { id: nextPipelineId(), name: "Newsletter Signup", stages: [] },
-  { id: nextPipelineId(), name: "Account Deactivation", stages: [] },
+  { id: nextPipelineId(), name: "User Registration", isDefault: false, stages: [] },
+  { id: nextPipelineId(), name: "Password Reset", isDefault: false, stages: [] },
+  { id: nextPipelineId(), name: "Newsletter Signup", isDefault: false, stages: [] },
+  {
+    id: nextPipelineId(),
+    name: "Account Deactivation",
+    isDefault: false,
+    stages: [],
+  },
 ];
 
 function findPipeline(pipelineId) {
@@ -118,9 +126,13 @@ function findStage(pipeline, stageId) {
   return pipeline.stages.find((stage) => stage.id === stageId);
 }
 
-/** The list shape - name only, no stages. */
+/** The list shape - name and default flag, no stages. */
 function toSummary(pipeline) {
-  return { id: pipeline.id, name: pipeline.name };
+  return {
+    id: pipeline.id,
+    name: pipeline.name,
+    isDefault: pipeline.isDefault === true,
+  };
 }
 
 function notFound(res, what) {
@@ -215,6 +227,9 @@ export const createPipeline = (req, res) => {
   const pipeline = {
     id: nextPipelineId(),
     name: String(name).trim(),
+    // The very first pipeline in the org has to be the default - there would
+    // otherwise be none until someone thought to set one.
+    isDefault: pipelines.length === 0,
     stages: [],
   };
 
@@ -252,6 +267,34 @@ export const updatePipeline = (req, res) => {
   });
 };
 
+/**
+ * POST /pipelines/:pipelineId/default
+ *
+ * Moves the default flag onto this pipeline. Separate from the PATCH above
+ * because it is not an edit to one record - it clears the flag from whichever
+ * pipeline held it, and the two halves have to happen together or the org ends
+ * up with two defaults (or none).
+ *
+ * Idempotent: setting the current default again is the state the caller asked
+ * for, not an error.
+ */
+export const setDefaultPipeline = (req, res) => {
+  const pipeline = findPipeline(req.params.pipelineId);
+  if (!pipeline) {
+    return notFound(res, "Pipeline");
+  }
+
+  for (const item of pipelines) {
+    item.isDefault = item.id === pipeline.id;
+  }
+
+  res.status(200).json({
+    success: true,
+    data: toSummary(pipeline),
+    message: "Default pipeline updated successfully",
+  });
+};
+
 /** DELETE /pipelines/:pipelineId */
 export const deletePipeline = (req, res) => {
   const index = pipelines.findIndex(
@@ -261,7 +304,13 @@ export const deletePipeline = (req, res) => {
     return notFound(res, "Pipeline");
   }
 
-  pipelines.splice(index, 1);
+  const [removed] = pipelines.splice(index, 1);
+
+  // Deleting the default would otherwise leave the org with none, and nothing
+  // in the UI asks which should take over - so the first survivor does.
+  if (removed.isDefault && pipelines.length > 0) {
+    pipelines[0].isDefault = true;
+  }
 
   res.status(200).json({
     success: true,

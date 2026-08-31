@@ -4,6 +4,7 @@ import {
   getPipelineById,
   createPipeline,
   updatePipeline,
+  setDefaultPipeline,
   deletePipeline,
   createStage,
   deleteStage,
@@ -21,6 +22,8 @@ router.post("/", createPipeline);
 router.get("/:pipelineId", getPipelineById);
 
 router.patch("/:pipelineId", updatePipeline);
+
+router.post("/:pipelineId/default", setDefaultPipeline);
 
 router.delete("/:pipelineId", deletePipeline);
 
