@@ -7,10 +7,13 @@ import {
   setDefaultPipeline,
   deletePipeline,
   createStage,
+  updateStage,
   deleteStage,
   reorderStages,
   createStatus,
+  updateStatus,
   deleteStatus,
+  reorderStatuses,
 } from "../Controllers/pipelinesController.js";
 
 const router = express.Router();
@@ -33,9 +36,23 @@ router.post("/:pipelineId/stages", createStage);
 // for a stage id.
 router.patch("/:pipelineId/stages/reorder", reorderStages);
 
+router.patch("/:pipelineId/stages/:stageId", updateStage);
+
 router.delete("/:pipelineId/stages/:stageId", deleteStage);
 
 router.post("/:pipelineId/stages/:stageId/statuses", createStatus);
+
+// Before "/statuses/:statusId" for the same reason the stage reorder is
+// before "/stages/:stageId".
+router.patch(
+  "/:pipelineId/stages/:stageId/statuses/reorder",
+  reorderStatuses,
+);
+
+router.patch(
+  "/:pipelineId/stages/:stageId/statuses/:statusId",
+  updateStatus,
+);
 
 router.delete("/:pipelineId/stages/:stageId/statuses/:statusId", deleteStatus);
 

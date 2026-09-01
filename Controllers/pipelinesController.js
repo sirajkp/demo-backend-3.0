@@ -33,7 +33,11 @@ function makeStage(input) {
   return {
     id: nextStageId(),
     name: String(input.name).trim(),
-    category: input.category,
+    // Optional: a stage with no won/lost meaning yet carries no category at
+    // all, rather than a stand-in one.
+    ...(VALID_CATEGORIES.includes(input.category)
+      ? { category: input.category }
+      : {}),
     color: input.color,
     // Omitted rather than zeroed when absent: a stage with no deadline is a
     // real stage, and 0 would read as "overdue immediately".
@@ -155,7 +159,13 @@ function validateStage(body) {
   if (!String(body?.name ?? "").trim()) {
     return "name is required";
   }
-  if (!VALID_CATEGORIES.includes(body?.category)) {
+  // Optional. Validated only when sent, and a blank counts as "not sent".
+  if (
+    body?.category !== undefined &&
+    body?.category !== null &&
+    body?.category !== "" &&
+    !VALID_CATEGORIES.includes(body.category)
+  ) {
     return `category must be one of: ${VALID_CATEGORIES.join(", ")}`;
   }
   if (!HEX_COLOR.test(String(body?.color ?? ""))) {
@@ -343,6 +353,75 @@ export const createStage = (req, res) => {
   });
 };
 
+/**
+ * PATCH /pipelines/:pipelineId/stages/:stageId
+ *
+ * The edit drawer sends the whole form - the same shape create takes - so it
+ * is validated the same way and every editable field is rewritten, not
+ * merged. The stage's id and its statuses are its own and are left untouched.
+ */
+export const updateStage = (req, res) => {
+  const pipeline = findPipeline(req.params.pipelineId);
+  if (!pipeline) {
+    return notFound(res, "Pipeline");
+  }
+
+  const stage = findStage(pipeline, req.params.stageId);
+  if (!stage) {
+    return notFound(res, "Stage");
+  }
+
+  const problem = validateStage(req.body);
+  if (problem) {
+    return badRequest(res, problem);
+  }
+
+  const body = req.body;
+
+  stage.name = String(body.name).trim();
+  stage.color = body.color;
+
+  // Optional - clearing the category in the drawer drops it from the stage.
+  if (VALID_CATEGORIES.includes(body.category)) {
+    stage.category = body.category;
+  } else {
+    delete stage.category;
+  }
+
+  // Rewritten wholesale, matching makeStage: an SLA that was set and is now
+  // cleared has to actually leave the stage, not linger from before.
+  if (
+    body.slaDays === undefined ||
+    body.slaDays === null ||
+    body.slaDays === ""
+  ) {
+    delete stage.slaDays;
+  } else {
+    stage.slaDays = Number(body.slaDays);
+  }
+
+  stage.gateType = body.gateType;
+
+  // Only the chosen gate keeps its answer - switching the gate drops what the
+  // old one asked for, the same rule create follows.
+  if (body.gateType === "requiredFields") {
+    stage.requiredFields = [...body.requiredFields];
+  } else {
+    delete stage.requiredFields;
+  }
+  if (body.gateType === "requiredDocument") {
+    stage.requiredDocumentType = String(body.requiredDocumentType).trim();
+  } else {
+    delete stage.requiredDocumentType;
+  }
+
+  res.status(200).json({
+    success: true,
+    data: stage,
+    message: "Stage updated successfully",
+  });
+};
+
 /** DELETE /pipelines/:pipelineId/stages/:stageId */
 export const deleteStage = (req, res) => {
   const pipeline = findPipeline(req.params.pipelineId);
@@ -437,6 +516,40 @@ export const createStatus = (req, res) => {
   });
 };
 
+/** PATCH /pipelines/:pipelineId/stages/:stageId/statuses/:statusId */
+export const updateStatus = (req, res) => {
+  const pipeline = findPipeline(req.params.pipelineId);
+  if (!pipeline) {
+    return notFound(res, "Pipeline");
+  }
+
+  const stage = findStage(pipeline, req.params.stageId);
+  if (!stage) {
+    return notFound(res, "Stage");
+  }
+
+  const status = stage.statuses.find(
+    (item) => item.id === req.params.statusId
+  );
+  if (!status) {
+    return notFound(res, "Status");
+  }
+
+  const { name } = req.body ?? {};
+  if (!String(name ?? "").trim()) {
+    return badRequest(res, "name is required");
+  }
+
+  status.name = String(name).trim();
+
+  // The whole stage, matching createStatus.
+  res.status(200).json({
+    success: true,
+    data: stage,
+    message: "Status updated successfully",
+  });
+};
+
 /** DELETE /pipelines/:pipelineId/stages/:stageId/statuses/:statusId */
 export const deleteStatus = (req, res) => {
   const pipeline = findPipeline(req.params.pipelineId);
@@ -462,5 +575,54 @@ export const deleteStatus = (req, res) => {
     success: true,
     data: null,
     message: "Status deleted successfully",
+  });
+};
+
+/**
+ * PATCH /pipelines/:pipelineId/stages/:stageId/statuses/reorder
+ *
+ * The complete list of status ids in their new order, validated as a full set
+ * the same way reorderStages is - a client on a stale view is rejected rather
+ * than silently dropping or duplicating a status.
+ */
+export const reorderStatuses = (req, res) => {
+  const pipeline = findPipeline(req.params.pipelineId);
+  if (!pipeline) {
+    return notFound(res, "Pipeline");
+  }
+
+  const stage = findStage(pipeline, req.params.stageId);
+  if (!stage) {
+    return notFound(res, "Stage");
+  }
+
+  const { statusIds } = req.body ?? {};
+
+  if (!Array.isArray(statusIds)) {
+    return badRequest(res, "statusIds must be an array");
+  }
+
+  const current = stage.statuses.map((status) => status.id);
+  const sameLength = statusIds.length === current.length;
+  const sameMembers =
+    sameLength &&
+    new Set(statusIds).size === statusIds.length &&
+    statusIds.every((id) => current.includes(id));
+
+  if (!sameMembers) {
+    return badRequest(
+      res,
+      "statusIds must contain every status of this stage exactly once"
+    );
+  }
+
+  const byId = new Map(stage.statuses.map((status) => [status.id, status]));
+  stage.statuses = statusIds.map((id) => byId.get(id));
+
+  // The whole pipeline, matching reorderStages.
+  res.status(200).json({
+    success: true,
+    data: pipeline,
+    message: "Statuses reordered successfully",
   });
 };
