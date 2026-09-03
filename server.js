@@ -14,6 +14,7 @@ import formsRoutes from "./Routes/formsRoutes.js";
 import emailTemplatesRoutes from "./Routes/emailTemplatesRoutes.js";
 import projectPipelineRoutes from "./Routes/projectPipelineRoutes.js";
 import pipelinesRoutes from "./Routes/pipelinesRoutes.js";
+import automationsRoutes from "./Routes/automationsRoutes.js";
 
 const app = express();
 app.use(
@@ -53,6 +54,7 @@ app.use("/user-preferences", userPreferencesRoutes);
 app.use("/object-manager", objectManagerRoutes);
 app.use("/project-pipeline", projectPipelineRoutes);
 app.use("/pipelines", pipelinesRoutes);
+app.use("/automations", automationsRoutes);
 
 app.use("/forms", formsRoutes);
 
